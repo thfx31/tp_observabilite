@@ -274,3 +274,84 @@ Permet de vérifier la MAJ dynamique
 ## Exercice 5 : Règles d'enregistrement (recording rules)
 Objectif : Pré-calculer une requête coûteuse sous forme de règle d'enregistrement. Créer un fichier de règles qui enregistre job:http_requests:rate5m toutes les 30 secondes.
 
+### Utilisation du container demo-api
+```shell
+# Se placer dans le bon dossier
+pwd
+/home/thomas/Git/tp_observabilite/module_1/exercice_05/Python-App/demo-api/app
+
+# Vérifier les fichiers disponibles
+ls
+app.py  Dockerfile  prometheus.yml  requirements.txt  traffic.sh
+
+# Build du container
+❯ docker compose up -d --build
+no configuration file provided: not found
+❯ docker build -t demo-api:1.0 .
+[+] Building 28.8s (11/11) FINISHED
+...
+=> exporting to image                                                                                                                                  0.1s 
+ => => exporting layers                                                                                                                                 0.1s 
+ => => writing image sha256:3a90da6dca4a6c41416011e5add480b0c7089674a3144e7025a2535f413fcf0d                                                            0.0s
+ => => naming to docker.io/library/demo-api:1.0
+
+# Démarrage du container
+ ❯ docker run -d --name demo-api -p 8000:8000 demo-api:1.0
+4a0df226781f911da738f48754b3460b90afeaae66095d5b86f06a881d787099
+
+docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' demo-api
+172.17.0.4
+```
+
+### Vérifier que l'app répond
+```shell
+curl http://localhost:8000/metrics
+# HELP python_gc_objects_collected_total Objects collected during gc
+# TYPE python_gc_objects_collected_total counter
+python_gc_objects_collected_total{generation="0"} 310.0
+python_gc_objects_collected_total{generation="1"} 39.0
+python_gc_objects_collected_total{generation="2"} 0.0
+...
+demo_http_requests_in_flight 0.0
+# HELP demo_active_users Number of currently active users (simulated)
+# TYPE demo_active_users gauge
+demo_active_users 151.0
+```
+
+### Créer `rules/api_rules.yml`
+
+```yaml
+groups:
+  - name: api_rules
+    interval: 30s
+    rules:
+      - record: job:http_requests:rate5m
+        expr: rate(demo_http_requests_total[5m])
+```
+
+### Lancer Prometheus
+
+```shell
+docker rm -f prometheus
+
+docker run -d \
+  --name prometheus \
+  -p 9090:9090 \
+  -v /home/thomas/Git/tp_observabilite/module_1/exercice_05/prometheus.yml:/etc/prometheus/prometheus.yml \
+  -v /home/thomas/Git/tp_observabilite/module_1/exercice_05/rules:/etc/prometheus/rules \
+  prom/prometheus \
+  --config.file=/etc/prometheus/prometheus.yml \
+  --web.enable-lifecycle
+
+prometheus
+8914cbc0c6cd81e4df765642047def0e5bcd6c579871018e829ba1b61f7f0a0a
+```
+
+### Interroger la metric `job:http_requests:rate5m`
+```shell
+❯ chmod +x traffic.sh
+❯ ./traffic.sh
+Generating traffic against http://localhost:8000 - Ctrl+C to stop
+```
+
+![Rule job:http_requests:rate5m](../img/module_1/exercice_05.png)
