@@ -11,7 +11,7 @@ docker run -d --name prometheus -p 9090:9090 prom/prometheus:latest
 ### Vérifier si la cible est UP
 Ouvrir dans un navigateur http://localhost:9090
 
-![Prometheus UP](img/module_1/exercice_01.png)
+![Prometheus UP](../img/module_1/exercice_01.png)
 
 Chercher le répertoire de storage (/etc/prometheus/prometheus.yml)
 Vérification des logs
@@ -189,9 +189,9 @@ curl -X POST http://localhost:9090/-/reload
 
 ### Requête CPU `node_cpu_seconds_total`
 
-![Node UP](img/module_1/exercice_03_1.png)
+![Node UP](../img/module_1/exercice_03_1.png)
 
-![Requete CPU](img/module_1/exercice_03_2.png)
+![Requete CPU](../img/module_1/exercice_03_2.png)
 
 ---
 ## Exercice 4 : Découverte de service : par fichier ou Kubernetes
@@ -250,7 +250,7 @@ docker run -d \
 ```
 
 ### Vérification du status dynamique
-![Dynamic targets](img/module_1/exercice_04_1.png)
+![Dynamic targets](../img/module_1/exercice_04_1.png)
 
 ### Modification du targets.json
 Permet de vérifier la MAJ dynamique
@@ -268,7 +268,7 @@ Permet de vérifier la MAJ dynamique
 ```
 
 ### Vérification sur l'IHM Prometheus
-![Dynamic targets 2](img/module_1/exercice_04_2.png)
+![Dynamic targets 2](../img/module_1/exercice_04_2.png)
 
 ---
 ## Exercice 5 : Règles d'enregistrement (recording rules)
