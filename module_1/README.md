@@ -278,15 +278,13 @@ Objectif : Pré-calculer une requête coûteuse sous forme de règle d'enregistr
 ```shell
 # Se placer dans le bon dossier
 pwd
-/home/thomas/Git/tp_observabilite/module_1/exercice_05/Python-App/demo-api/app
+/home/thomas/Git/tp_observabilite/module_1/Python-App/demo-api/app
 
 # Vérifier les fichiers disponibles
 ls
 app.py  Dockerfile  prometheus.yml  requirements.txt  traffic.sh
 
 # Build du container
-❯ docker compose up -d --build
-no configuration file provided: not found
 ❯ docker build -t demo-api:1.0 .
 [+] Building 28.8s (11/11) FINISHED
 ...
@@ -355,3 +353,44 @@ Generating traffic against http://localhost:8000 - Ctrl+C to stop
 ```
 
 ![Rule job:http_requests:rate5m](../img/module_1/exercice_05.png)
+
+---
+## Exercice 6 : Règles d'alerte et Alertmanager
+Objectif : Définir une alerte qui se déclenche lorsque le taux d'erreur de demo-api dépasse 5 % pendant 2 minutes, la router vers Alertmanager, puis observer l'alerte qui se déclenche.
+
+### Créer un fichier alermanager.yml
+```shell
+route:
+  receiver: 'default'
+
+receivers:
+  - name: 'default'
+```
+
+### Lancer Alertmanager
+```shell
+docker run -d \
+  --name alertmanager \
+  -p 9093:9093 \
+  -v /home/thomas/Git/tp_observabilite/module_1/exercice_06/alertmanager.yml:/etc/alertmanager/alertmanager.yml \
+  prom/alertmanager
+ddf423b84ca31febc91ab4cc691e2a2076a7c64e5a5731cfb9ee55b0ba71a6fb
+
+docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' alertmanager
+172.17.0.5
+```
+
+### Relancer Prometheus
+```shell
+docker rm -f prometheus
+
+docker run -d \
+  --name prometheus \
+  -p 9090:9090 \
+  -v /home/thomas/Git/tp_observabilite/module_1/exercice_06/prometheus.yml:/etc/prometheus/prometheus.yml \
+  -v /home/thomas/Git/tp_observabilite/module_1/exercice_06/rules:/etc/prometheus/rules \
+  -v /home/thomas/Git/tp_observabilite/module_1/exercice_06/alerts:/etc/prometheus/alerts \
+  prom/prometheus \
+  --config.file=/etc/prometheus/prometheus.yml \
+  --web.enable-lifecycle
+```
