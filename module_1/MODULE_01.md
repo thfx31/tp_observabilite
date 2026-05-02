@@ -515,3 +515,52 @@ Objectif : Calculer la latence p95 de /api/orders sur les 5 dernières minutes, 
 --- 
 ## Exercice 10 : Construire un exporter personnalisé et le scraper
 Objectif : Utiliser l'application Python demo-api fournie comme exporter personnalisé. L'ajouter en tant que nouveau scrape job, générer du trafic, et vérifier que les quatre métriques demo_* apparaissent.
+
+**Note** : le setup est déja en place (exercices précédents) et demo-api est deja scrappé via `targets.json`
+
+
+**Prometheus**
+```shell
+docker run -d \
+  --name prometheus \
+  -p 9090:9090 \
+  -v /home/thomas/Git/tp_observabilite/module_1/exercice_06/prometheus.yml:/etc/prometheus/prometheus.yml \
+  -v /home/thomas/Git/tp_observabilite/module_1/exercice_06/rules:/etc/prometheus/rules \
+  -v /home/thomas/Git/tp_observabilite/module_1/exercice_06:/etc/prometheus/sd/targets.json \
+  -v /home/thomas/Git/tp_observabilite/module_1/exercice_06/alerts:/etc/prometheus/alerts \
+  prom/prometheus \
+  --config.file=/etc/prometheus/prometheus.yml \
+  --web.enable-lifecycle
+ ``` 
+&nbsp;
+**demo-api**
+ ```shell
+docker build -t demo-api:1.0 .
+docker run -d --name demo-api -p 8000:8000 demo-api:1.0
+
+docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' demo-api
+172.17.0.4
+```
+&nbsp;
+**Générer du traffic**
+```shell
+./module_1/Python-App/demo-api/app/traffic.sh
+```
+
+&nbsp;
+### Résultats des requêtes
+
+**demo_http_requests_total**
+![demo_http_requests_total](../img/module_1/exercice_10_1.png)
+&nbsp;
+
+**demo_http_request_duration_seconds_bucket**
+![demo_http_request_duration_seconds_bucket](../img/module_1/exercice_10_2.png)
+&nbsp;
+
+**demo_http_requests_in_flight**
+![demo_http_requests_in_flight](../img/module_1/exercice_10_3.png)
+&nbsp;
+
+**demo_active_users**
+![demo_active_users](../img/module_1/exercice_10_4.png)
