@@ -1,4 +1,9 @@
-# tp_observabilite (WIP)
+# TPs Observabilité
 
-[Accéder au README du Module 1](module_1/README.md)
+Module Observabilité - Thomas FAUROUX - YNOV 2024/2026
+
+**Sommaire :**
+- [Module 1 - Prometheus](module_1/MODULE_01.md)
+- [Module 2 - Grapana](module_1/MODULE_02.md)
+- [Module 3 - Thanos](module_1/MODULE_03.md)
 

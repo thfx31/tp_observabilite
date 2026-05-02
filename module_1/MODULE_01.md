@@ -201,7 +201,7 @@ Objectif : Remplacer les static_configs par un mécanisme de découverte. Sous D
 ```json
 [
   {
-    "targets": ["<IP_NODE_EXPORTER>:9100"],
+    "targets": ["172.17.0.3:9100"],
     "labels": {
       "job": "node",
       "source": "file_sd"
@@ -366,6 +366,7 @@ route:
 receivers:
   - name: 'default'
 ```
+&nbsp;
 
 ### Lancer Alertmanager
 ```shell
@@ -379,7 +380,30 @@ ddf423b84ca31febc91ab4cc691e2a2076a7c64e5a5731cfb9ee55b0ba71a6fb
 docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' alertmanager
 172.17.0.5
 ```
+&nbsp;
+### Créer un fichier d'alertes
+```shell
+mkdir alerts
+vim alerts/api_alerts.yml
+```
 
+```yaml
+groups:
+  - name: api_alerts
+    rules:
+      - alert: HighErrorRate
+        expr: |
+          sum(rate(demo_http_requests_total{status=~"5.."}[5m])) 
+          / 
+          sum(rate(demo_http_requests_total[5m])) > 0.05
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Taux d'erreur élevé sur {{ $labels.instance }}"
+          description: "Le taux d'erreur dépasse 5% (actuellement {{ $value | printf \"%.2f\" }}%)"
+```
+&nbsp;
 ### Relancer Prometheus
 ```shell
 docker rm -f prometheus
@@ -389,8 +413,76 @@ docker run -d \
   -p 9090:9090 \
   -v /home/thomas/Git/tp_observabilite/module_1/exercice_06/prometheus.yml:/etc/prometheus/prometheus.yml \
   -v /home/thomas/Git/tp_observabilite/module_1/exercice_06/rules:/etc/prometheus/rules \
+  -v /home/thomas/Git/tp_observabilite/module_1/exercice_06:/etc/prometheus/sd/targets.json \
   -v /home/thomas/Git/tp_observabilite/module_1/exercice_06/alerts:/etc/prometheus/alerts \
   prom/prometheus \
   --config.file=/etc/prometheus/prometheus.yml \
   --web.enable-lifecycle
 ```
+&nbsp;
+
+### Vérification de l'alerte
+**Prometheus**
+![Alert Prometheus](../img/module_1/exercice_06_1.png)
+&nbsp;
+**Alertmanager**
+![Alert Alertmanager](../img/module_1/exercice_06_2.png)
+
+---
+## Exercice 7 : PromQL - bases : vecteurs instantanés et vecteurs de plage
+Objectif : Mettre en pratique la différence entre un vecteur instantané, un vecteur de plage et un scalaire. Répondre aux questions à partir des métriques de demo-api
+
+### Test de requêtes dans Prometheus
+
+**demo_http_requests_total**
+- Type : vecteur instantané (un échantillon par série au moment de l'évaluation)
+- Explication : C'est une "photo" à l'instant T. Prometheus renvoie un seul échantillon (la valeur la plus récente enregistrée) pour chaque série temporelle correspondante.
+
+**demo_http_requests_total[1m]**
+- Type : vecteur de plage une tranche d'historique par série
+- Explication : au lieu d'une valeur unique, on obtient une "tranche d'historique" contenant tous les points enregistrés durant la dernière minute pour chaque série (grâce au [1])
+- Observation : dans l'onglet Graph, Prometheus affiche une erreur car il ne peut pas tracer un graphique directement à partir d'une liste de valeurs par point temporel
+
+**rate(demo_http_requests_total[1m])**
+- Type : vecteur instantané
+- Explication : la fonction `rate()` prend un vecteur de plage en entrée pour calculer une pente, mais elle extrait un vecteur instantané.
+- Labels : chaque jeu de labels représente une combinaison unique de caractéristiques du trafic
+
+**scalar(sum(demo_http_requests_total))**
+- Type : scalaire
+- Explication : 
+  - `sum(...)` est une fonction d'agrégation qui additionne toutes les séries ensemble pour n'en faire qu'une seule
+  - `scalar(...)` prend ce vecteur (qui n'a plus qu'une seule ligne) et en retire tous les labels (job, instance, etc.) pour ne gearder que le nombre pur
+  - On obtient un chiffre unique, sans aucune étiquette
+
+---
+## Exercice 8 : PromQL - agrégations et jointures
+Objectif : calculer ces requêtes :
+a) taux de requêtes total par endpoint
+b) ratio d'erreurs par endpoint
+c) taux de requêtes par pod, ordonné (utiliser topk).
+&nbsp;
+**Le trafic total par endpoint** 
+- Requête : `sum by (endpoint) (rate(demo_http_requests_total[5m]))`
+- Explication : `sum by (endpoint)` indique à Prometheus d'additionner toutes les séries qui partagent le même label endpoint et de supprimer les autres labels (status, method, etc.) du résultat final.
+
+![Trafic by endpoint](../img/module_1/exercice_08_1.png)
+
+&nbsp;
+**Ratio d'erreur par endpoint** 
+- Requête : `sum(rate(demo_http_requests_total{status=~"5.."}[5m])) / sum(rate(demo_http_requests_total[5m]))`
+- Explication : on divise la somme des erreurs par la somme totale du trafic. Comme nous n'avons pas mis de by (...), le résultat est un vecteur unique représentant le taux d'erreur global de toute l'infrastructure.
+![Ratio d'erreur by endpoint](../img/module_1/exercice_08_2.png)
+
+&nbsp;
+**Taux de requêtes par pod, ordonné**
+On veut classer les serveurs (instances) par volume de trafic et ne garder que les plus chargés.
+- Requête : `topk(3, sum by (instance) (rate(demo_http_requests_total[5m])))`
+- Explication :
+  - On calcule le trafic total par serveur avec sum by (instance).
+  - L'opérateur topk(3, ...) filtre ce résultat pour ne conserver que les 3 meilleures valeurs.
+  - Note sur le résultat : comme je n'ai qu'une seule instance de demo-api dans mon lab (172.17.0.4:8000), Prometheus n'affiche qu'une seule ligne, car il n'y a pas de 2ème ou 3ème place à attribuer.
+![Taux de requetes par pod](../img/module_1/exercice_08_3.png)
+
+---
+## Exercice 9 : PromQL avancé : histogrammes et quantiles
