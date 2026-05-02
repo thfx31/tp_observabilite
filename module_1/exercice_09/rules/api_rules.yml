@@ -1,0 +1,15 @@
+groups:
+  - name: api_recording_rules
+    interval: 15s
+    rules:
+      # Calcul du taux par job
+      - record: job:http_requests:rate5m
+        expr: sum by (job) (rate(demo_http_requests_total[5m]))
+
+      # Calcul du taux par endpoint (Question a de l'ex 8)
+      - record: endpoint:http_requests:rate5m
+        expr: sum by (endpoint) (rate(demo_http_requests_total[5m]))
+
+      # Calcul du taux par instance (Question c de l'ex 8)
+      - record: instance:http_requests:rate5m
+        expr: sum by (instance) (rate(demo_http_requests_total[5m]))

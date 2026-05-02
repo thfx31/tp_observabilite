@@ -486,3 +486,32 @@ On veut classer les serveurs (instances) par volume de trafic et ne garder que l
 
 ---
 ## Exercice 9 : PromQL avancé : histogrammes et quantiles
+Objectif : Calculer la latence p95 de /api/orders sur les 5 dernières minutes, et utiliser predict_linear pour estimer le nombre de requêtes dans une heure.
+
+**Inspecter la métrique `demo_http_request_duration_seconds_bucket`**
+![Requete demo_http_request_duration_seconds_bucket](../img/module_1/exercice_09_1.png)
+
+&nbsp;
+**Utiliser histogram_quantile() avec rate sur les séries _bucket**
+- Requête :`histogram_quantile(0.95, sum by (le, endpoint) (rate(demo_http_request_duration_seconds_bucket{endpoint="/api/orders"}[5m])))`
+- Explication :
+  - On filtre sur la métrique de type histogramme `_bucket` pour l'endpoint `/api/orders`
+  - On calcule le `rate` sur 5 minutes pour chaque "panier" (label `le` pour Less or Equal)
+  - On utilise `sum by (le, endpoint)` car la fonction `histogram_quantile` a besoin du label `le` 
+  - `histogram_quantile` calcule ensuite la valeur temporelle en secondes sous laquelle se trouvent 95 % des requêtes.
+ 
+![Histogramme quantile](../img/module_1/exercice_09_1.png)
+
+&nbsp;
+**Utiliser predict_linear() sur demo_http_requests_total avec une fenêtre d'1h**
+- Requête : `predict_linear(demo_http_requests_total[1h], 3600)`
+- Explication :
+  - `demo_http_requests_total[1h]` : On donne à Prometheus l'historique de la dernière heure
+  - `3600` : C'est le futur en secondes (1 heure)
+  - La fonction trace une ligne droite basée sur la pente actuelle. Si le trafic monte, elle indiqueraquelle sera la valeur du compteur dans exactement 3600 secondes
+
+![Predict linear](../img/module_1/exercice_09_3.png)
+
+--- 
+## Exercice 10 : Construire un exporter personnalisé et le scraper
+Objectif : Utiliser l'application Python demo-api fournie comme exporter personnalisé. L'ajouter en tant que nouveau scrape job, générer du trafic, et vérifier que les quatre métriques demo_* apparaissent.
