@@ -278,7 +278,7 @@ Objectif : Pré-calculer une requête coûteuse sous forme de règle d'enregistr
 ```shell
 # Se placer dans le bon dossier
 pwd
-/home/thomas/Git/tp_observabilite/module_1/Python-App/demo-api/app
+/home/thomas/Git/tp_observabilite/Python-App/demo-api/app
 
 # Vérifier les fichiers disponibles
 ls
@@ -544,7 +544,7 @@ docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' dem
 &nbsp;
 **Générer du traffic**
 ```shell
-./module_1/Python-App/demo-api/app/traffic.sh
+./Python-App/demo-api/app/traffic.sh
 ```
 
 &nbsp;
