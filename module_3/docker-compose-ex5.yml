@@ -1,0 +1,171 @@
+services:
+  # --- CLUSTER A ---
+  prometheus-a:
+    image: prom/prometheus:latest
+    container_name: prometheus-a
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.min-block-duration=2h'
+      - '--storage.tsdb.max-block-duration=2h'
+      - '--web.enable-admin-api'
+    volumes:
+      - ./prometheus-a.yml:/etc/prometheus/prometheus.yml
+      - prometheus-a-data:/prometheus
+
+  thanos-sidecar-a:
+    image: thanosio/thanos:main-2026-04-30-6e88f93
+    container_name: thanos-sidecar-a
+    user: root
+    volumes:
+      - prometheus-a-data:/prometheus
+      - ./thanos/bucket.yml:/etc/thanos/bucket.yml
+    command:
+      - sidecar
+      - --prometheus.url=http://prometheus-a:9090
+      - --tsdb.path=/prometheus
+      - --objstore.config-file=/etc/thanos/bucket.yml
+    depends_on:
+      - prometheus-a
+
+  # --- CLUSTER B ---
+  prometheus-b:
+    image: prom/prometheus:latest
+    container_name: prometheus-b
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.min-block-duration=2h'
+      - '--storage.tsdb.max-block-duration=2h'
+      - '--web.enable-admin-api'
+    volumes:
+      - ./prometheus-b.yml:/etc/prometheus/prometheus.yml
+      - prometheus-b-data:/prometheus
+
+  thanos-sidecar-b:
+    image: thanosio/thanos:main-2026-04-30-6e88f93
+    container_name: thanos-sidecar-b
+    user: root
+    volumes:
+      - prometheus-b-data:/prometheus
+      - ./thanos/bucket.yml:/etc/thanos/bucket.yml
+    command:
+      - sidecar
+      - --prometheus.url=http://prometheus-b:9090
+      - --tsdb.path=/prometheus
+      - --objstore.config-file=/etc/thanos/bucket.yml
+    depends_on:
+      - prometheus-b
+
+  # --- LECTURE ET AGGRÉGATION ---
+  thanos-query:
+    image: thanosio/thanos:main-2026-04-30-6e88f93
+    container_name: thanos-query
+    ports:
+      - "10902:10902"
+    command:
+      - query
+      - --http-address=0.0.0.0:10902
+      - --endpoint=thanos-sidecar-a:10901 # Vers Sidecar A
+      - --endpoint=thanos-sidecar-b:10901 # Vers Sidecar B
+      - --endpoint=thanos-store:10901     # Vers les archives
+      - --query.replica-label=replica     # Active la déduplication sur ce label
+    depends_on:
+      - thanos-sidecar-a
+      - thanos-sidecar-b
+      - thanos-store
+
+  thanos-store:
+    image: thanosio/thanos:main-2026-04-30-6e88f93
+    container_name: thanos-store
+    user: root
+    volumes:
+      - ./thanos/bucket.yml:/etc/thanos/bucket.yml
+    command:
+      - store
+      - --objstore.config-file=/etc/thanos/bucket.yml
+      - --data-dir=/tmp/thanos/store
+    depends_on:
+      - minio
+
+  # --- MAINTENANCE ET WEB TOOLS ---
+  thanos-compact:
+    image: thanosio/thanos:main-2026-04-30-6e88f93
+    container_name: thanos-compact
+    user: root
+    volumes:
+      - ./thanos/bucket.yml:/etc/thanos/bucket.yml
+    command:
+      - compact
+      - --objstore.config-file=/etc/thanos/bucket.yml
+      - --data-dir=/tmp/thanos-compact
+      - --wait
+      - --retention.resolution-raw=30d
+      - --retention.resolution-5m=180d
+      - --retention.resolution-1h=2y
+    depends_on:
+      - minio
+
+  thanos-bucket-web:
+    image: thanosio/thanos:main-2026-04-30-6e88f93
+    container_name: thanos-bucket-web
+    user: root
+    ports:
+      - "10905:10902"
+    volumes:
+      - ./thanos/bucket.yml:/etc/thanos/bucket.yml
+    command:
+      - tools
+      - bucket
+      - web
+      - --objstore.config-file=/etc/thanos/bucket.yml
+      - --http-address=0.0.0.0:10902
+    depends_on:
+      - minio
+
+  # --- INFRASTRUCTURE (MINIO, API, GRAFANA) ---
+  minio:
+    image: minio/minio
+    container_name: minio
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: admin
+      MINIO_ROOT_PASSWORD: password123
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio-data:/data
+
+  init-minio:
+    image: minio/mc
+    depends_on:
+      - minio
+    entrypoint: >
+      /bin/sh -c "
+      until (/usr/bin/mc alias set myminio http://minio:9000 admin password123) do sleep 1; done;
+      /usr/bin/mc mb myminio/thanos || true;
+      exit 0;
+      "
+
+  demo-api:
+    build: ../Python-App/demo-api/app
+    container_name: demo-api
+    ports:
+      - "8000:8000"
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    depends_on:
+      - thanos-query
+    volumes:
+      - grafana-storage:/var/lib/grafana
+
+volumes:
+  prometheus-a-data:
+  prometheus-b-data:
+  minio-data:
+  grafana-storage:

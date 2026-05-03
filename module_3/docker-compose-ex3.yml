@@ -1,0 +1,112 @@
+services:
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    # Thanos a besoin de flags spécifiques pour bloquer le compactage local à 2h
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.min-block-duration=2h'
+      - '--storage.tsdb.max-block-duration=2h'
+      - '--web.enable-admin-api'
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
+    restart: unless-stopped
+
+  thanos-sidecar:
+    image: thanosio/thanos:main-2026-04-30-6e88f93
+    container_name: thanos-sidecar
+    user: root
+    volumes:
+      - prometheus-data:/prometheus # On partage le même volume que Prometheus
+      - ./thanos/bucket.yml:/etc/thanos/bucket.yml
+    command:
+      - sidecar
+      - --prometheus.url=http://prometheus:9090
+      - --tsdb.path=/prometheus
+      - --objstore.config-file=/etc/thanos/bucket.yml
+    depends_on:
+      - prometheus
+      - minio
+  
+  thanos-store:
+    image: thanosio/thanos:main-2026-04-30-6e88f93
+    container_name: thanos-store
+    user: root
+    volumes:
+      - ./thanos/bucket.yml:/etc/thanos/bucket.yml
+    command:
+      - store
+      - --objstore.config-file=/etc/thanos/bucket.yml
+      - --data-dir=/var/thanos/store # Cache local pour les index
+    depends_on:
+      - minio
+
+  thanos-query:
+    image: thanosio/thanos:main-2026-04-30-6e88f93
+    container_name: thanos-query
+    ports:
+      - "10902:10902" # Interface Web du Querier
+    command:
+      - query
+      - --http-address=0.0.0.0:10902
+      # On pointe vers le Sidecar (données récentes) et le Store (données anciennes)
+      - --endpoint=thanos-sidecar:10901
+      - --endpoint=thanos-store:10901
+      # Déduplication : si on avait plusieurs réplicas, il nettoierait les doublons
+      - --query.replica-label=replica 
+    depends_on:
+      - thanos-sidecar
+      - thanos-store  
+
+  minio:
+    image: minio/minio
+    container_name: minio
+    ports:
+      - "9000:9000" # API S3
+      - "9001:9001" # Console Web pour nous
+    environment:
+      MINIO_ROOT_USER: admin
+      MINIO_ROOT_PASSWORD: password123
+    volumes:
+      - minio-data:/data
+    command: server /data --console-address ":9001"
+
+  # Ce service crée automatiquement le bucket 'thanos' au démarrage
+  init-minio:
+    image: minio/mc
+    depends_on:
+      - minio
+    entrypoint: >
+      /bin/sh -c "
+      until (/usr/bin/mc alias set myminio http://minio:9000 admin password123) do echo 'Waiting...' && sleep 1; done;
+      /usr/bin/mc mb myminio/thanos || true;
+      exit 0;
+      "
+
+  demo-api:
+    build: ../Python-App/demo-api/app
+    container_name: demo-api
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana-storage:/var/lib/grafana
+      - ./grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
+volumes:
+  prometheus-data:
+  grafana-storage:
+  minio-data:
